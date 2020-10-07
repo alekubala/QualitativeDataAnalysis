@@ -1,0 +1,282 @@
+---
+title: Wp³yw czynników na wystêpowanie chorób psychicznych u studentów wczesnych lat studiów
+author: "Aleksandra Kubala"
+date: "7 grudnia 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+##Wstêp
+
+
+Pierwsze lata studiów to szczególnie stresuj¹cy okres, a stres mo¿e mieæ wp³yw na wyniki w nauce oraz zdrowie studentów tak¿e to psychiczne.
+Celem badania by³o sprawdzenie jakie czynniki maj¹ wp³yw na choroby psychiczne u studentów pierwszych lat. Badanie pierwotnie zosta³o przeprowadzone we Francji w Nicei. 
+
+##Opis danych
+
+Miêdzy wrzeœniem 2012 r, a czerwcem 2013 wszyscy studenci uniwersytetu w Niceii byli objêci obowi¹zkow¹ wizyt¹ medyczn¹ w uniwersyteckiej s³u¿bie zdrowia. Byli badani pod k¹tem potencjalnych chorób. Wywiad diagnostyczny zbiera³ gromadzi³ informacje o stulu ¿ycia tj. dieta, wysi³ek fizyczny, za¿ywanie u¿ywek. Zosta³y zebrane tak¿e informacje o warunkach ¿ycia.
+Ocenione zosta³o wystêpowanie objawów psychicznych zwi¹zanych z: objawami depresji, ataków paniki oraz odczuwanym niepokojem.
+
+W badaniu uwzglêdniono 2936 (1064 studentów i 1590 studentek) studentów. Dane zosta³y zgromadzone prospektywnie. Nie jest to eksperyment z grup¹ kontorln¹. W celu potwierdzenia wyniku badañ zaleca siê powtórzenie eksperymentu na kolejnej uczelni. 
+
+Atrybuty, które zosta³y pominiête w analizie, to szczegó³owe badania moczu, serca i wzroku, rozkurczowe i skurczowe ciœnienie krwi, zadciœnienie, têtno. Dane te zosta³y usuniête, gdy¿ w badaniu skupimy siê na zwi¹zkach miêdzy stylem ¿ycia (za¿ywanie u¿ywek, piciem alkoholu, wysi³ek fizyczny), jakoœci¹ ¿ycia (problemy fiansowe, zadowolenia z zakwaterowania), a liczb¹ objawów zaburzeñ psychicznych.
+Wszystkie zebrane dane s¹ jakoœciowe, co mo¿na równie¿ sprawdziæ u¿ywaj¹c funkcji sapply().
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+d=read.csv("C:/Users/Ola/Desktop/ADJ projekt/database_well-being-of-students-in-Nice_.csv",header = TRUE)
+sapply(select(d,Gender,Field.of.study,Satisfied.with.living.conditions,Financial.difficulties,Physical.activity,Drinker,Cigarette.smoker,Marijuana.use,Depressive.symptoms,Anxiety.symptoms,Panic.attack.symptoms), class)
+```
+
+Przy atrybutach odpowiadaj¹cym chorobom psychicznym mamy komunikat integer, jednak w tym wypadku cyfra 0 odpowiada braku wystêpowania, a 1 wystêpowaniu objawów choroby. Jest to wiêc równiæ zmienna jakoœciowa. ¯eby zrozumieæ lepiej dane i problem który bêdziemy rozwa¿aæ, przyjrzymy siê wartoœciom jakie przyjmuj¹ kolejne zmienne:
+
+* Age: 19, 18, 20 and more
+* Gender: male, female
+* Field of study: humanities, medicine and allied programs, law and political science, science, sport science, other programs
+* Satisfied with living conditions: yes, no
+* Long commute: yes, no
+* Financial difficulties: no, yes
+* Eating junk food: yes, no
+* Irregular rhythm or unbalanced meals: yes, no
+* Physical activity: regularly, no activity or occasionally
+* Overweight and obesity: yes, no
+* Anxiety symptoms: 0 (for no), 1 (for yes)
+* Panic attack symptoms: 0 (for no), 1 (for yes)
+* Depressive symptoms: 0 (for no), 1 (for yes)
+* Cigarette smoker: no, occasionally to regularly, frequently to heavily
+* Drinker: no or occasionally, regularly to heavily
+* Marijuana: yes, no
+
+Zanim przejdziemy do analizy, zast¹pimy atrybuty syptomów chorób psychicznych przez jedn¹ kolumnê mental.il, która bêdzie przyjmowaæ wartoœci: 0 dla braku  symptomów i 1 je¿eli wystêpuje co najmniej jeden symptom, po czym uporz¹dkujemy wiersze w kolejnoœci rosn¹cej wzglêdem kolumny mental.il.
+
+```{r echo=FALSE, warning=FALSE}
+colnames(d)
+d<-mutate(d, mental.il=1)
+ for (i in 1:length(d$Gender)){
+   if(d$Anxiety.symptoms[i]==0 && d$Depress[i]==0 && d$Panic.attack.symptoms[i]==0) d$mental.il[i]=0
+   else d$mental.il[i]=1
+ }
+d%<>%select(Gender,Field.of.study,Satisfied.with.living.conditions,Financial.difficulties,Physical.activity,Drinker,Marijuana.use,Cigarette.smoker,mental.il)%>%arrange(mental.il)
+```
+
+##Analiza
+Analizê zaczniemy od sprawdzenia czy p³eæ ma znaczenie przy wystêpowaniu syptomów chorób psychicznych.
+
+```{r echo=FALSE, results='hide',message=FALSE}
+odds.ratio <-
+  function(x, pad.zeros=FALSE, conf.level=0.95) {
+    if (pad.zeros) {
+      if (any(x==0)) x <- x + 0.5
+    }
+    theta <- x[1,1] * x[2,2] / ( x[2,1] * x[1,2] )
+    ASE <- sqrt(sum(1/x))
+    CI <- exp(log(theta)
+              + c(-1,1) * qnorm(0.5*(1+conf.level)) *ASE )
+    p.value <- pnorm(abs(log(theta)/ASE), lower.tail=FALSE)
+    list(estimator=theta,
+         p.value=p.value,
+         conf.interval=CI,
+         conf.level=conf.level)
+  }
+
+```
+
+Bêdziemy przyjmowaæ konwencjê, ¿e za sukces uznajemy posiadanie objawów choroby psychicznej oraz bêdzemy go kodowaæ jako pierwsza z wartoœci Mental_illness.
+
+```{r echo=FALSE, warning=FALSE}
+gender<-c("female","male")
+plec<-c(335,196,1369,1036,1704,1232)
+mental<-c("yes","no","total")
+d1<-cbind(expand.grid(Gender=gender, Mental_illness=mental),nr=plec)
+x<-xtabs(nr~Gender+Mental_illness,data=d1)
+x
+```
+
+Iloœæ studentek maj¹cych choroby psychiczne przewy¿sza znacznie studentów, jednak nie jest to pe³ny obraz sytuacji, poniewa¿ zbadanych studentek by³o wiêcej ni¿ studentów. ¯eby skonfrontowaæ wynik, obliczymy estymator ilorazu szans. Skorzystamy z funkcji odds.ratio(), która zosta³a zdefiniowana w pliku CDA.r. 
+
+```{r echo=FALSE, warning=FALSE}
+odds.ratio(matrix(nrow = 2,ncol = 2, c(335,196,1369,1036)))
+
+```
+Estymator wynosi 1.29, co oznacza, ¿e prawdopodobieñstwo sukcesu jest wiêksze dla kobiet, jednak jest to niewielka przewaga. 
+
+Teraz skupimy siê na zbadaniu zale¿noœci miêdzy zmiennymi. W tym celu pos³u¿ymy siê miêdzy innymi testem Fishera (fisher.test()) czy testem chi kwadrat (chisq.test()). Dzia³anie tych testów omówimy na przyk³adach przedstawionych poni¿ej. Zaczniemy od zbadania wp³ywu palenia papierosów na wystêpowanie symptomów chorób psychicznych.
+
+```{r message=FALSE, warning=FALSE}
+cigarets<-c(375,156,1785,620)
+mental2<-c("yes","no")
+category<-c("no","occasionally to heavily")
+d2<-cbind(expand.grid(Cigarets_smokers=category,Mental_illness=mental2),nr=cigarets)
+y<-xtabs(nr~Cigarets_smokers+Mental_illness,data=d2)
+y
+```
+Zaczniemy od testu Fishera. Test Fishera polega na rozpatrywaniu przy $H_0$ warunkowych rozk³adów próby wzglêdem statystyk dostatecznych i konstrukcjê testów warunkowych. Z definicji statystyk dostatecznych mamy niezale¿noœæ warunkowego rozk³adu próby od nieznanych parametrów zak³ócaj¹cych tj. prawdopodobieñstw z rozk³adów brzegowych. Statystykami dostatecznymi s¹ licznoœci brzegowe.
+
+W przypadku tabel kontyngencji 2 na 2 zerowa niezale¿noœæ warunkowa jest równowa¿na hipotezie, ¿e iloraz szans wynosi jeden.
+```{r}
+fisher.test(y)
+```
+
+P-wartoœæ któr¹ uzyskaliœmy z testu jest mniejsza od $5%$ wskazuje to na zale¿noœæ miêdzy paleniem papierosów, a wystêpowaniem symptomów chorób. W celu potwierdzenia naszego wniosku, wykonamy test chi-kwadrat. Test mo¿emy przeprowadziæ u¿ywaj¹c funkcji chisq.test() lub za pomoc¹ summary().
+Niezale¿noœæ cech w planie krzy¿owym, oznacza, ¿e $p_{ij}=p_{i*}p_{*j}$ . Za wartoœci $p_{i*} oraz p_{*j}$ przyjmujemy ich estymatory najwiêkszej wiarygodnoœci, tzn. $ p_{i*}=\frac{n_i}{n}$, gdzie $n$ to liczba obserwacji, a $n_i$ to liczba obserwacji posiadaj¹cych cechê.
+
+```{r}
+summary(y)
+```
+
+Test chi-kwadrat potwierdzi³ nasz wniosek o zale¿noœci zmiennych. W nastêpnym kroku, przetestujemy niezale¿noœæ aktywnoœci fizycznej od wystêpowania symptomów.
+
+```{r message=FALSE, warning=FALSE}
+activity<-c(318,1295,213,1110)
+students<-c("no activity or occasionally","regularly")
+d3<-cbind(expand.grid(Mental_illness=mental2, Physical_activity=students),nr=activity)
+z<-xtabs(nr~Physical_activity+Mental_illness,data=d3)
+z
+fisher.test(z)
+```
+W tym wypadku równie¿ stwierdzamy zale¿noœæ miêdzy cechami.
+
+```{r echo=FALSE, results='hide',message=FALSE}
+GK.tau <- function(dat)
+{ N <- sum(dat);
+
+  dat.rows <- nrow(dat);
+  dat.cols <- ncol(dat);
+  max.col <- sum.col <- L.col <- matrix(,dat.cols);
+  max.row <- sum.row <- L.row <- matrix(,dat.rows);
+  for(i in 1:dat.cols)
+     { sum.col[i] <- sum(dat[,i]); max.col[i] <- max(dat[,i]); }
+  for(i in 1:dat.rows)
+     { sum.row[i] <- sum(dat[i,]); max.row[i] <- max(dat[i,]); }
+
+  max.row.margin <- max(apply(dat,1,sum));   max.col.margin <- max(apply(dat,2,sum));
+
+# Goodman-Kruskal tau (raws=indep.vars, cols=dep.vars)
+  n.err.unconditional <- N^2;
+  for(i in 1:dat.rows)
+     n.err.unconditional <- n.err.unconditional-N*sum(dat[i,]^2/sum.row[i]);   
+  n.err.conditional <- N^2-sum(sum.col^2);   
+  tau <- 1-(n.err.unconditional/n.err.conditional);
+
+  v <- n.err.unconditional/(N^2);
+  d <- n.err.conditional/(N^2);
+  f <- d*(v+1)-2*v;
+
+  var.tau.CR <- 0;
+  for(i in 1:dat.rows)
+     for(j in 1:dat.cols)
+        var.tau.CR <- var.tau.CR + dat[i,j]*(-2*v*(sum.col[j]/N)+d*((2*dat[i,j]/sum.row[i])-sum((dat[i,]/sum.row[i])^2))-f)^2/(N^2*d^4);
+  ASE <- sqrt(var.tau.CR);
+
+  U.tau.CR <- (N-1)*(dat.cols-1)*tau; 
+  # Chi-squared approximation for H0 according to Margolin & Light JASA 1974, 755-764, 
+  # see also Liebetrau 1983   
+  p.value <- pchisq(U.tau.CR,df=(dat.rows-1)*(dat.cols-1),lower=FALSE); 
+
+  data.frame(tau, p.value, ASE);  
+}
+```
+```{r}
+GK.tau(z)
+```
+Funkcja GK.tau() zdefiniowana w pliku CDA.r, pozwala na zbadanie miary zale¿noœci zmiennej objaœnianej (wystêpowanie symptomów chorób) od zmiennej objaœniaj¹cej (w tym wypadku aktywnoœæ fizyczna), któr¹ nazywamy wspó³czynnikiem Goodmana i Kruskala. Gdyby wartoœæ tau wynios³a 0, oznacza³oby to niezale¿noœæ zmiennych. Obliczona wartoœæ tau, w tym wypadku wskazuje na zale¿noœæ, lecz nie jest ona silna./
+Zanalizujemy teraz pozosta³e zmienne, wykonuj¹c za ka¿dym razem dok³adny test Fishera./
+Poni¿ej tabela kontyngencji przedstawia zestawienie problemów finansowych z wystêpowaniem symptomów choroby.
+```{r message=FALSE, warning=FALSE}
+financial<-c(515,2400,16,5)
+kol<-c("no","yes")
+d4<-cbind(expand.grid(Mental_illness=mental2, Financial_difficulties=kol),nr=financial)
+a<-xtabs(nr~Financial_difficulties+Mental_illness,data=d4)
+a
+fisher.test(a)
+```
+P-wartoœæ jest bliska 0, co oznacza silny zwi¹zek miêdzy wystêpowaniem syptomów, a problemami finansowymi oraz odrzucenie hipotezy zerowej o niezale¿noœci zmiennych jakoœciowych./
+Przyjrzymy siê teraz wp³ywowi na zmienn¹ objaœnian¹ przez zadowolenie z warunków mieszkaniowych.
+```{r}
+living<-c(51,93,480,2312)
+liv<-c("no","yes")
+d5<-cbind(expand.grid(Mental_illness=mental2, Satisfied_with_living_condition=liv),nr=living)
+b<-xtabs(nr~Satisfied_with_living_condition+Mental_illness,data=d5)
+b
+fisher.test(b)
+summary(b)
+```
+Podobnie jak we wczeœniejszym przypadku widzimy, ¿e zmiena Living_condition ma wp³yw na zmienn¹ objaœnian¹./
+Ostatnim czynnikiem, który chcemy zbadaæ bêdzie palenie marihuany.
+
+```{r message=FALSE, warning=FALSE}
+marijuana<-c(462,2183,60,222)
+mar<-c("no","yes")
+d6<-cbind(expand.grid(Mental_illness=mental2, Marijuana_use=mar),nr=marijuana)
+c<-xtabs(nr~Marijuana_use+Mental_illness,data=d6)
+c
+fisher.test(c)
+summary(c)
+```
+Oba testy wykaza³y, ¿e wartoœæ p jest wiêksza od 0.05, nie ma zatem powodów do odrzucenia hipotezy o niezale¿noœci./
+W zwi¹zku z tym w tworzeniu regresji liniowej, nie bêdziemy braæ pod uwagê zmiennej Marijuana_use.
+
+##Prognoza
+Przejdziemy teraz do stworzenia modelu regresji logistycznej. Zmienne które pos³u¿¹ nam do analizy to Cigarets_smokers, Financial_difficulties,  Satisfied_with_living_condition, Physical_activity. Zmienn¹ objaœnian¹ w naszym modelu bêdzie Mental_illness. /
+Na pocz¹tku podzielimy nasz zbiór danych na zbiór treningowy i testowy, odpowiednio 80% i 20% ca³oœci.
+
+
+```{r}
+indx=sample(1:nrow(d),0.8*nrow(d))
+train=d[indx,]
+test=d[-indx,]
+```
+
+Nastêpnie stworzymy pierwszy naiwny model regresji liniowej, uwglêdniaj¹c wszystkie zmienne które badaliœmy testami w poprzednim rozdziale
+
+```{r}
+mental.illness = factor(factor(train$mental.il,labels=c(" 1","0")))
+Phys.act = factor(factor(train$Physical.activity,labels=c(" regularly"," no activity or occasionally")))
+Fin.diff = factor(factor(train$Financial.difficulties, labels=c(" no"," yes")))
+Sat.liv.cond = factor(factor(train$Satisfied.with.living.conditions, labels = c(" no"," yes")))
+Cig.sm = factor(factor(train$Cigarette.smoker,labels=c(" frequently to heavily"," occasionally to regularly"," no")))
+Mar.use = factor(factor(train$Marijuana.use,labels = c("  yes"," no")))
+mental.glm<-glm(mental.illness~Phys.act+Sat.liv.cond+Fin.diff+Cig.sm+Marijuana.use,family = binomial(link="logit"),data=train)
+summary(mental.glm)
+```
+
+W drugim modelu wyrzucimy te zmienne które maj¹ najmniejszy wp³yw na zmienn¹ objaœnian¹ oraz zmienn¹ Marijuana.use, która w testach pokaza³a brak wp³ywu na wystêpowanie objawów chorób.
+
+```{r}
+mental.glm2<-glm(mental.illness~Sat.liv.cond+Fin.diff+Phys.act,family = binomial(link="logit"),data=train)
+summary(mental.glm2)
+```
+
+
+Nastêpnie, zstêpuj¹c dane treningowe danymi testowymi, sprawdzimy czy model nadal zachowuje siê dobrze.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+mental.illness = factor(factor(test$mental.il,labels=c(" 1","0")))
+Phys.act = factor(factor(test$Physical.activity,labels=c(" regularly"," no activity or occasionally")))
+Fin.diff = factor(factor(test$Financial.difficulties, labels=c(" no"," yes")))
+Sat.liv.cond = factor(factor(test$Satisfied.with.living.conditions, labels = c(" no"," yes")))
+Cig.sm = factor(factor(test$Cigarette.smoker,labels=c(" frequently to heavily"," occasionally to regularly"," no")))
+Mar.use = factor(factor(test$Marijuana.use,labels = c("  yes"," no")))
+
+```
+
+```{r}
+mental.glm2<-glm(mental.illness~Sat.liv.cond+Fin.diff+Phys.act,family = binomial(link="logit"),data=test)
+summary(mental.glm2)
+```
+
+
+##Podsumowanie
+
+Analiza mia³a na celu przede wszystkim wskazaæ czynniki, które mog¹ mieæ wp³yw na wystêpowanie symptomów chorób psychocznych takich jak: depresja, nerwica oraz wystêpowanie ataków paniki. Testy z których korzystaliœmy, to dok³adny test Fishera, test chi-kwadrat oraz obliczany wspó³czynnik Goodmana i Kruskala. Po przeanalizowaniu wyników, mo¿emy stwierdziæ, ¿e wp³yw na wystêpowanie objawów chorowy maj¹: problemy finansowe, warunki mieszkaniowe, aktywnoœæ fizyczna oraz palenie papierosów. Jedyny z poœród przebadanych atrybutów, który nie wykaza³ zale¿noœci to palenie marihuany, co by³o du¿ym zaskoczeniem. /
+W drugiej czêœci analizy zbudowaliœmy dwa modele regresji liniowej. Pierwszy, dosyæ naiwny, gdzie wziêliœmy wszystkie badane atrybuty tak¿e Marijuana.use. W drugim odrzuciliœmy zmienne, które mia³y najmniejszy wp³yw na zmienn¹ objaœnian¹ co poskutkowa³o zauwa¿alnym pogorszeniem b³êdu. Sugeruje siê zwiêszenie próbki testowej, poniewa¿ pogorszenie mo¿e wynikaæ z za ma³ej iloœci próbek lub znalezienie innego modelu.
+
+
+##Odnoœniki
+https://datadryad.org/stash/dataset/doi:10.5061/dryad.54qt7
+http://home.agh.edu.pl/~szkutnik/wp-content/uploads/CDA.txt
+
+
+
